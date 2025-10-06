@@ -1,0 +1,92 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Foobar.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:CompileBindings="True"
+		x:DataType="vm:MainWindowViewModel"
+        x:Class="Foobar.Views.MainWindow"
+        xmlns:local="clr-namespace:Foobar.Views"
+        xmlns:model="using:Foobar.Models"
+        Title="Foobar">
+
+<!-- ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="10"
+        SystemDecorations="BorderOnly" -->
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <SplitView
+        IsPaneOpen="True"
+        DisplayMode="Inline"
+        OpenPaneLength="300"
+    >
+        <SplitView.Pane>
+            <StackPanel Orientation="Vertical">
+                <DataGrid 
+                    DataContext="{Binding NumbersViewModel}"
+                    GridLinesVisibility="All"
+                    IsReadOnly="False"
+                    ItemsSource="{Binding Points}"
+                >
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="X" Binding="{Binding X}" IsReadOnly="False"/>
+                        <DataGridTextColumn Header="Y" Binding="{Binding Y}" IsReadOnly="False"/>
+                              
+                        <!-- <DataGridTemplateColumn Header="Y">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate DataType="model:Person">
+                                    <TextBlock Text="{Binding AgeInYears, StringFormat='{}{0} years'}" 
+                                    VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate DataType="model:Person">
+                                    <NumericUpDown Value="{Binding AgeInYears}"  
+                                    FormatString="N0" Minimum="0" Maximum="120"  
+                                    HorizontalAlignment="Stretch"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn> -->
+
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button Click="OnAddPoint" HorizontalAlignment="Stretch">Add point</Button>
+                    <Button Click="OnRemovePoint" HorizontalAlignment="Stretch">Remove point</Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,10">
+                    <Button Click="OnImport" HorizontalAlignment="Stretch">Import points</Button>
+                    <Button Click="OnExport" HorizontalAlignment="Stretch">Export points</Button>
+                </StackPanel>
+
+                <ComboBox Background="{DynamicResource ThemeControlMidBrush}"
+                    ItemsSource="{Binding StyleChoices}"
+                    SelectedValue="{Binding SelectedStyle}"
+                >
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+            </StackPanel>
+        </SplitView.Pane>
+        
+        <local:DrawingCanvas
+            x:Name="MyCanvas"
+            Background="{DynamicResource ThemeBackgroundColor}"
+            LineStyle="{Binding SelectedStyle.Style}"
+            Points="{Binding NumbersViewModel.Points}"
+        >
+            <!-- <Ellipse Fill="{DynamicResource HighlightBrush}" Width="58" Height="58" Canvas.Left="400" Canvas.Top="10"/> -->
+        </local:DrawingCanvas>
+
+    </SplitView>
+</Window>
