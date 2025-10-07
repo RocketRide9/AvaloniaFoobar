@@ -27,7 +27,8 @@
     >
         <SplitView.Pane>
             <StackPanel Orientation="Vertical">
-                <DataGrid 
+                <DataGrid
+                    x:Name="MyGrid"
                     DataContext="{Binding NumbersViewModel}"
                     GridLinesVisibility="All"
                     IsReadOnly="False"

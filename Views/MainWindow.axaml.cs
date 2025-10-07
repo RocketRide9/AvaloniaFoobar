@@ -22,14 +22,8 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
         Activated += (_, _) =>
         {
             var numsVm = ViewModel.NumbersViewModel;
-            numsVm.Points.ObserveCollectionChanges()
-                .Subscribe( _ => MyCanvas.InvalidateVisual());
-            numsVm.PointsCache
-                .Connect()
-                .ObserveOn(RxApp.MainThreadScheduler)
-                .Subscribe(_ =>
-                    MyCanvas.InvalidateVisual() 
-                );
+            numsVm.Points.CollectionChanged += (_, _) => MyCanvas.InvalidateVisual();
+            MyGrid.CellEditEnded += (_, _) => MyCanvas.InvalidateVisual();
         };
 
     }
@@ -39,7 +33,7 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
         var numsVm = ViewModel.NumbersViewModel;
 
         var last = numsVm.Points.Last();
-        numsVm.PointsCache.AddOrUpdate(
+        numsVm.Points.Add(
             new Models.Point(last.X + 10, last.Y)
         );
     }
@@ -49,8 +43,7 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
         var vm = ViewModel;
         var numsVm = vm.NumbersViewModel;
 
-        var last = numsVm.Points.Last();
-        numsVm.PointsCache.RemoveKey(last.X);
+        numsVm.Points.RemoveAt(numsVm.Points.Count - 1);
     }
 
     public async void OnImport(object sender, RoutedEventArgs args)

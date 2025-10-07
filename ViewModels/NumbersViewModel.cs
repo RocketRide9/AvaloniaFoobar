@@ -14,9 +14,7 @@ namespace Foobar.ViewModels
     // our base class. Read more about it here: https://www.reactiveui.net
     public class NumbersViewModel : ReactiveObject
     {
-        public SourceCache<Point, double> PointsCache { get; } = new(val => val.X);
-        private ReadOnlyObservableCollection<Point> _pointsData;
-        public ReadOnlyObservableCollection<Point> Points => _pointsData;
+        public ObservableCollection<Point> Points { get; }
 
         public event Action PointsChanged;
 
@@ -28,16 +26,7 @@ namespace Foobar.ViewModels
                 new(10, 30),
                 new(600, 400)
             };
-            PointsCache.AddOrUpdate(points);
-
-            PointsCache
-                .Connect()
-                .Sort(
-                    SortExpressionComparer<Point>
-                        .Ascending(x => x.X)
-                )
-                .Bind(out _pointsData)
-                .Subscribe(x => PointsChanged?.Invoke());
+            Points = new(points);
         }
 
         public void ImportFromReader(StreamReader reader)
@@ -45,7 +34,7 @@ namespace Foobar.ViewModels
             var file = reader.ReadToEnd().Trim();
             var pointsByLines = file.Split("\n").Select(val => val.Split(" "));
 
-            PointsCache.Clear();
+            Points.Clear();
             foreach (var coordPair in pointsByLines)
             {
                 if (coordPair.Length != 2)
@@ -57,13 +46,13 @@ namespace Foobar.ViewModels
                     double.Parse(coordPair[1])
                 );
 
-                PointsCache.AddOrUpdate(point);
+                Points.Add(point);
             }
         }
 
         public void ExportToWriter(StreamWriter writer)
         {
-            foreach (var point in _pointsData)
+            foreach (var point in Points)
             {
                 writer.WriteLine($"{point.X} {point.Y}");
             }

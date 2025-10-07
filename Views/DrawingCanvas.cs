@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
-using DynamicData.Binding;
-using Foobar.ViewModels;
 using Point = Foobar.Models.Point;
 
 namespace Foobar.Views;
@@ -25,9 +22,9 @@ public class DrawingCanvas : Control
 
     public Avalonia.Point Translation { get; set; } = new(300, 300);
 
-    public static readonly StyledProperty<ReadOnlyObservableCollection<Point>> PointsProperty =
-        AvaloniaProperty.Register<DrawingCanvas, ReadOnlyObservableCollection<Point>>(nameof(Points));
-    public ReadOnlyObservableCollection<Point> Points
+    public static readonly StyledProperty<ObservableCollection<Point>> PointsProperty =
+        AvaloniaProperty.Register<DrawingCanvas, ObservableCollection<Point>>(nameof(Points));
+    public ObservableCollection<Point> Points
     {
         private get => GetValue(PointsProperty);
         set => SetValue(PointsProperty, value);
