@@ -1,13 +1,17 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reactive.Linq;
 using Avalonia.Collections;
+using Avalonia.Data.Converters;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.ReactiveUI;
 using DynamicData;
 using DynamicData.Binding;
+using Foobar.Models;
 using Foobar.ViewModels;
 using ReactiveUI;
 
@@ -21,29 +25,52 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
 
         Activated += (_, _) =>
         {
-            var numsVm = ViewModel.NumbersViewModel;
-            numsVm.Points.CollectionChanged += (_, _) => MyCanvas.InvalidateVisual();
+            var vm = ViewModel;
+            vm.ActiveTable.Points.CollectionChanged += (_, _) => MyCanvas.InvalidateVisual();
             MyGrid.CellEditEnded += (_, _) => MyCanvas.InvalidateVisual();
+            vm.Tables.CollectionChanged += (_, _) => MyCanvas.InvalidateVisual();
+
+            vm.ActivateTableCommand.Subscribe(
+                _ => MyGrid.ItemsSource = vm.ActiveTable.Points
+            );
         };
 
     }
 
     public void OnAddPoint(object sender, RoutedEventArgs args)
     {
-        var numsVm = ViewModel.NumbersViewModel;
+        var tab = ViewModel.ActiveTable;
 
-        var last = numsVm.Points.Last();
-        numsVm.Points.Add(
-            new Models.Point(last.X + 10, last.Y)
+        var last = tab.Points.Last();
+        tab.Points.Add(
+            new Point(last.X + 10, last.Y)
         );
     }
 
     public void OnRemovePoint(object sender, RoutedEventArgs args)
     {
-        var vm = ViewModel;
-        var numsVm = vm.NumbersViewModel;
+        var tab = ViewModel.ActiveTable;
 
-        numsVm.Points.RemoveAt(numsVm.Points.Count - 1);
+        tab.Points.RemoveAt(tab.Points.Count - 1);
+    }
+
+    public void OnAddTable(object sender, RoutedEventArgs args)
+    {
+        var vm = ViewModel;
+
+        vm.Tables.Add(TableModel.NewDefault(new(255, 255, 255, 0)));
+    }
+
+    public void OnRemoveTable(object sender, RoutedEventArgs args)
+    {
+        var vm = ViewModel;
+        var ltab = vm.Tables[^1];
+        if (ltab == vm.ActiveTable)
+        {
+            vm.ActiveTable = vm.Tables[^2];
+        }
+
+        vm.Tables.RemoveAt(vm.Tables.Count - 1);
     }
 
     public async void OnImport(object sender, RoutedEventArgs args)
@@ -65,11 +92,10 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
         if (files.Count >= 1)
         {
             // Open reading stream from the first file.
-            await using var stream = await files.Single().OpenReadAsync();
+            var file = files.Single();
+            await using var stream = await file.OpenReadAsync();
             using var streamReader = new StreamReader(stream);
-            var ctx = (MainWindowViewModel)DataContext;
-            var model = ctx.NumbersViewModel;
-            model.ImportFromReader(streamReader);
+            ViewModel.ActiveTable.ImportFromReader(file.Path.AbsolutePath, streamReader);
         }
     }
     public async void OnExport(object sender, RoutedEventArgs args)
@@ -93,9 +119,27 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
             // Open reading stream from the first file.
             await using var stream = await file.OpenWriteAsync();
             using var streamWriter = new StreamWriter(stream);
-            var ctx = (MainWindowViewModel)DataContext;
-            var numsVm = ctx.NumbersViewModel;
-            numsVm.ExportToWriter(streamWriter);
+            ViewModel.ActiveTable.ExportToWriter(streamWriter);
         }
     }
+}
+
+public class ColorToBrushExceptionConverter : IValueConverter
+{
+    public static readonly ColorToBrushExceptionConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+    {
+        if (value is Color item) return new SolidColorBrush(item);
+
+        throw new UnreachableException();
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+    {
+        if (value is SolidColorBrush brush) return brush.Color;
+
+        throw new UnreachableException();
+    }
+
 }

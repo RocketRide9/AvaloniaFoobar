@@ -1,13 +1,22 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.VisualTree;
+using Foobar.Models;
+using HarfBuzzSharp;
+using ReactiveUI;
 using Point = Foobar.Models.Point;
 
 namespace Foobar.Views;
+
+using Tables = ObservableCollection<TableModel>;
 
 public class DrawingCanvas : Control
 {
@@ -22,12 +31,25 @@ public class DrawingCanvas : Control
 
     public Avalonia.Point Translation { get; set; } = new(300, 300);
 
-    public static readonly StyledProperty<ObservableCollection<Point>> PointsProperty =
-        AvaloniaProperty.Register<DrawingCanvas, ObservableCollection<Point>>(nameof(Points));
-    public ObservableCollection<Point> Points
+    public static readonly StyledProperty<Tables> TablesProperty =
+        AvaloniaProperty.Register<DrawingCanvas, Tables>(nameof(Tables));
+    public Tables Tables
     {
-        private get => GetValue(PointsProperty);
-        set => SetValue(PointsProperty, value);
+        private get => GetValue(TablesProperty);
+        set {
+            SubscribeTo(value);
+            value.CollectionChanged += (_, args) => SubscribeTo(args.NewItems);
+            SetValue(TablesProperty, value);
+        }
+    }
+
+    void SubscribeTo(IList tables)
+    {
+        foreach (TableModel table in tables)
+        {
+            table.WhenAnyValue(x => x.Color)
+                .Subscribe(_ => InvalidateVisual());
+        }
     }
 
     public enum ELineStyle
@@ -47,6 +69,8 @@ public class DrawingCanvas : Control
     bool _isPressed = false;
     Avalonia.Point _prevPos;
     Avalonia.Point _oldTranslation;
+    Avalonia.Point _curPosition;
+    Matrix _translationMatrix = Matrix.CreateTranslation(300, 300);
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -66,14 +90,52 @@ public class DrawingCanvas : Control
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
+        _curPosition = e.GetPosition(this);
+        // InvalidateVisual();
         if (_isPressed)
         {
-            var currPos = e.GetPosition(this);
-            Translation = _oldTranslation - _prevPos + currPos;
+            Translation = _oldTranslation - (_prevPos - _curPosition) / _scaleFactor;
+            _translationMatrix = Matrix.CreateTranslation(Translation);
             // Console.WriteLine($"{Translation.X}, {Translation.Y}");
             InvalidateVisual();
         }
         base.OnPointerMoved(e);
+    }
+
+    double _scaleFactor = 1d;
+    Matrix _scaleMatrix = Matrix.Identity;
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        var v = e.Delta;
+
+        if(v.Y > 0)
+        {
+            _scaleFactor *= 2;
+        } else
+        {
+            _scaleFactor /= 2;
+        }
+
+        // point = point.WithY((Bounds.Height - point.Y)/_scaleFactor);
+        Console.WriteLine($"Scale: {_scaleFactor}");
+
+        var m = Matrix.Identity;
+        m = m.Append(_translationMatrix);
+        // m = m.Append(_scaleMatrix);
+        var anchor = m.Invert().Transform(_curPosition);
+
+        _scaleMatrix = Matrix.Identity;
+        _scaleMatrix = _scaleMatrix.Append(
+            Matrix.CreateScale(_scaleFactor, _scaleFactor)
+        );
+        _scaleMatrix = _scaleMatrix.Append(
+            Matrix.CreateTranslation((1-_scaleFactor) * _curPosition)
+        );
+
+        InvalidateVisual();
+
+        e.Handled = true;
+        base.OnPointerWheelChanged(e);
     }
 
     public DrawingCanvas()
@@ -81,7 +143,7 @@ public class DrawingCanvas : Control
         AffectsRender<DrawingCanvas>(
             BackgroundProperty,
              LineStyleProperty,
-                PointsProperty
+                TablesProperty
         );
     }
 
@@ -91,14 +153,14 @@ public class DrawingCanvas : Control
     /// плюс 1 с каждой стороны
     /// </summary>
     /// <returns></returns>
-    (int x0, int x1) FindNeedToDraw()
+    (int x0, int x1) FindNeedToDraw(ObservableCollection<Point> serie)
     {
         var left = -Translation.X;
         var right = -Translation.X + Bounds.Right;
         int x0 = 0;
-        for (int i0 = 0; i0 < Points.Count; i0++)
+        for (int i0 = 0; i0 < serie.Count; i0++)
         {
-            if (Points[i0].X >= left)
+            if (serie[i0].X >= left)
             {
                 x0 = i0 - 1;
                 break;
@@ -108,10 +170,10 @@ public class DrawingCanvas : Control
         {
             x0 = 0;
         }
-        int x1 = Points.Count - 1;
-        for (int i1 = x0; i1 < Points.Count; i1++)
+        int x1 = serie.Count - 1;
+        for (int i1 = x0; i1 < serie.Count; i1++)
         {
-            if (Points[i1].X >= right)
+            if (serie[i1].X >= right)
             {
                 x1 = i1;
                 break;
@@ -128,13 +190,15 @@ public class DrawingCanvas : Control
             context.FillRectangle(Background, Bounds);
         }
 
-        var m = new Matrix(1, 0, 0, -1, Translation.X, Translation.Y);
+        var m = Matrix.Identity;
+        m = m.Append(Matrix.CreateScale(1d, -1d));
+        m = m.Append(_translationMatrix);
+        m = m.Append(_scaleMatrix);
         context.PushTransform(m);
-        var b = FindNeedToDraw();
-
-        if (b.x0 < b.x1)
+        foreach (var table in Tables)
         {
-            var br = new SolidColorBrush(Color.FromRgb(150, 0, 255));
+            var points = table.Points;
+            var br = new SolidColorBrush(table.Color);
             var pen = new Pen(br, 10, lineCap: PenLineCap.Round);
 
             switch (LineStyle)
@@ -142,14 +206,14 @@ public class DrawingCanvas : Control
                 case ELineStyle.PolyLine:
                     context.DrawGeometry(
                         br, pen,
-                        new PolylineGeometry(Points.Select(x => x.AsAvalonian()), false)
+                        new PolylineGeometry(points.Select(x => x.AsAvalonian()), false)
                     );
                     break;
                 case ELineStyle.CubicBezier:
                     var pathFigures = new PathFigures();
                     var pathFigure = new PathFigure()
                     {
-                        StartPoint = Points[b.x0].AsAvalonian(),
+                        StartPoint = points[0].AsAvalonian(),
                         IsFilled = false,
                         IsClosed = false
                     };
@@ -157,15 +221,15 @@ public class DrawingCanvas : Control
                     pathFigure.Segments = segments;
                     pathFigures.Add(pathFigure);
 
-                    for (int i = b.x0; i < b.x1; i++)
+                    for (int i = 0; i < points.Count; i++)
                     {
-                        var hx = (Points[i + 1].X - Points[i].X) / 2.0;
-                        var hy = (Points[i + 1].Y - Points[i].Y) / 2.0;
+                        var hx = (points[i + 1].X - points[i].X) / 2.0;
+                        var hy = (points[i + 1].Y - points[i].Y) / 2.0;
                         segments.Add(new BezierSegment
                         {
-                            Point1 = Points[i].AsAvalonian() + new Avalonia.Point(hx, hy / 2),
-                            Point2 = Points[i + 1].AsAvalonian() - new Avalonia.Point(hx, hy / 2),
-                            Point3 = Points[i + 1].AsAvalonian()
+                            Point1 = points[i].AsAvalonian() + new Avalonia.Point(hx, hy / 2),
+                            Point2 = points[i + 1].AsAvalonian() - new Avalonia.Point(hx, hy / 2),
+                            Point3 = points[i + 1].AsAvalonian()
                         });
                     }
                     context.DrawGeometry(
@@ -177,6 +241,11 @@ public class DrawingCanvas : Control
                     throw new NotImplementedException();
             }
         }
+
+        // var br2 = new SolidColorBrush(Color.FromRgb(255, 0, 0));
+        // var pen2 = new Pen(br2, 10, lineCap: PenLineCap.Round);
+        // var ptr = m.Invert().Transform(_curPosition);
+        // context.DrawLine(pen2, ptr, ptr + new Avalonia.Point(10, 10));
 
         base.Render(context);
         Console.Write(".");

@@ -1,5 +1,4 @@
-using DynamicData;
-using DynamicData.Binding;
+using Avalonia.Media;
 using ReactiveUI;
 using System;
 using System.Collections.Generic;
@@ -7,33 +6,53 @@ using System.Collections.ObjectModel;
 using Foobar.Models;
 using System.IO;
 using System.Linq;
+using Avalonia;
 
-namespace Foobar.ViewModels
+namespace Foobar.Models
 {
-    // Instead of implementing "INotifyPropertyChanged" on our own we use "ReactiveObject" as 
-    // our base class. Read more about it here: https://www.reactiveui.net
-    public class NumbersViewModel : ReactiveObject
+    public class Activatable<T>
     {
-        public ObservableCollection<Point> Points { get; }
+        public bool Active { get; set; }
+        public required T Table { get; set;}
+    }
+    public partial class TableModel : ReactiveObject
+    {
+        public ObservableCollection<Point> Points { get; private set; } = [];
+        public string Name { get; private set; } = "";
+        
+        [ReactiveUI.SourceGenerators.Reactive]
+        private Color _color;
 
-        public event Action PointsChanged;
-
-        public NumbersViewModel()
+        private TableModel()
         {
+            
+        }
+
+        public static TableModel NewDefault (Color color)
+        {
+            var res = new TableModel
+            {
+                Name = "Default",
+                Color = color
+            };
+
             var points = new List<Point>
             {
                 new(1, 3),
                 new(10, 30),
                 new(600, 400)
             };
-            Points = new(points);
+            res.Points = new(points);
+
+            return res;
         }
 
-        public void ImportFromReader(StreamReader reader)
+        public void ImportFromReader(string filePath, StreamReader reader)
         {
             var file = reader.ReadToEnd().Trim();
             var pointsByLines = file.Split("\n").Select(val => val.Split(" "));
 
+            Name = Path.GetFileName(filePath);
             Points.Clear();
             foreach (var coordPair in pointsByLines)
             {
