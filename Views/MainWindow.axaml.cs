@@ -60,6 +60,14 @@ public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
 
         vm.Tables.Add(TableModel.NewDefault(new(255, 255, 255, 0)));
     }
+    
+    public void OnResetView(object sender, RoutedEventArgs args)
+    {
+        var vm = ViewModel;
+
+        MyCanvas.Translation = new(0, 0);
+        MyCanvas.ScaleFactor = 1;
+    }
 
     public void OnRemoveTable(object sender, RoutedEventArgs args)
     {

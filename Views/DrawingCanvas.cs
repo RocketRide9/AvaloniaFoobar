@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -10,7 +9,6 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Foobar.Models;
-using HarfBuzzSharp;
 using ReactiveUI;
 using Point = Foobar.Models.Point;
 
@@ -28,8 +26,6 @@ public class DrawingCanvas : Control
         get => GetValue(BackgroundProperty);
         set => SetValue(BackgroundProperty, value);
     }
-
-    public Avalonia.Point Translation { get; set; } = new(300, 300);
 
     public static readonly StyledProperty<Tables> TablesProperty =
         AvaloniaProperty.Register<DrawingCanvas, Tables>(nameof(Tables));
@@ -70,7 +66,19 @@ public class DrawingCanvas : Control
     Avalonia.Point _prevPos;
     Avalonia.Point _oldTranslation;
     Avalonia.Point _curPosition;
-    Matrix _translationMatrix = Matrix.CreateTranslation(300, 300);
+    Matrix _translationMatrix;
+
+    Avalonia.Point _translation;
+    public Avalonia.Point Translation
+    {
+        get => _translation;
+        set
+        {
+            _translation = value;
+            _translationMatrix = Matrix.CreateTranslation(_translation);
+            InvalidateVisual();
+        }
+    }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -94,15 +102,45 @@ public class DrawingCanvas : Control
         // InvalidateVisual();
         if (_isPressed)
         {
-            Translation = _oldTranslation - (_prevPos - _curPosition) / _scaleFactor;
-            _translationMatrix = Matrix.CreateTranslation(Translation);
-            // Console.WriteLine($"{Translation.X}, {Translation.Y}");
-            InvalidateVisual();
+            Translation = _oldTranslation - (_prevPos - _curPosition) / ScaleFactor;
         }
         base.OnPointerMoved(e);
     }
 
     double _scaleFactor = 1d;
+    public double ScaleFactor {
+        get => _scaleFactor;
+        set {
+            _scaleFactor = value;
+            _scaleMatrix = Matrix.Identity;
+
+            // point = point.WithY((Bounds.Height - point.Y)/_scaleFactor);
+            Console.WriteLine($"Scale: {_scaleFactor}");
+    
+            var m = Matrix.Identity;
+            m = m.Append(Matrix.CreateScale(1d, -1d));
+            m = m.Append(Matrix.CreateTranslation(0, Bounds.Height));
+            m = m.Append(_translationMatrix);
+            var anchor = m.Transform(_curPosition);
+            
+            // anchor = new Avalonia.Point(0, 0);
+    
+            // _scaleMatrix = _scaleMatrix.Append(
+            //     Matrix.CreateScale(_scaleFactor, _scaleFactor)
+            // );
+            // _scaleMatrix = _scaleMatrix.Append(
+            //     Matrix.CreateTranslation((1-_scaleFactor) * anchor)
+            // );
+            _scaleMatrix = _scaleMatrix.Append(
+                Matrix.CreateScale(_scaleFactor, _scaleFactor)
+            );
+            _scaleMatrix = _scaleMatrix.Append(
+                Matrix.CreateTranslation(anchor*(1-_scaleFactor))
+            ); 
+            
+            InvalidateVisual();
+        }
+    }
     Matrix _scaleMatrix = Matrix.Identity;
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
@@ -110,29 +148,11 @@ public class DrawingCanvas : Control
 
         if(v.Y > 0)
         {
-            _scaleFactor *= 2;
+            ScaleFactor *= 1.2;
         } else
         {
-            _scaleFactor /= 2;
+            ScaleFactor /= 1.2;
         }
-
-        // point = point.WithY((Bounds.Height - point.Y)/_scaleFactor);
-        Console.WriteLine($"Scale: {_scaleFactor}");
-
-        var m = Matrix.Identity;
-        m = m.Append(_translationMatrix);
-        // m = m.Append(_scaleMatrix);
-        var anchor = m.Invert().Transform(_curPosition);
-
-        _scaleMatrix = Matrix.Identity;
-        _scaleMatrix = _scaleMatrix.Append(
-            Matrix.CreateScale(_scaleFactor, _scaleFactor)
-        );
-        _scaleMatrix = _scaleMatrix.Append(
-            Matrix.CreateTranslation((1-_scaleFactor) * _curPosition)
-        );
-
-        InvalidateVisual();
 
         e.Handled = true;
         base.OnPointerWheelChanged(e);
@@ -140,6 +160,8 @@ public class DrawingCanvas : Control
 
     public DrawingCanvas()
     {
+        Translation = new(0, 0);
+        
         AffectsRender<DrawingCanvas>(
             BackgroundProperty,
              LineStyleProperty,
@@ -192,6 +214,7 @@ public class DrawingCanvas : Control
 
         var m = Matrix.Identity;
         m = m.Append(Matrix.CreateScale(1d, -1d));
+        m = m.Append(Matrix.CreateTranslation(0, Bounds.Height));
         m = m.Append(_translationMatrix);
         m = m.Append(_scaleMatrix);
         context.PushTransform(m);
@@ -221,7 +244,7 @@ public class DrawingCanvas : Control
                     pathFigure.Segments = segments;
                     pathFigures.Add(pathFigure);
 
-                    for (int i = 0; i < points.Count; i++)
+                    for (int i = 0; i < points.Count-1; i++)
                     {
                         var hx = (points[i + 1].X - points[i].X) / 2.0;
                         var hy = (points[i + 1].Y - points[i].Y) / 2.0;
@@ -242,10 +265,10 @@ public class DrawingCanvas : Control
             }
         }
 
-        // var br2 = new SolidColorBrush(Color.FromRgb(255, 0, 0));
-        // var pen2 = new Pen(br2, 10, lineCap: PenLineCap.Round);
-        // var ptr = m.Invert().Transform(_curPosition);
-        // context.DrawLine(pen2, ptr, ptr + new Avalonia.Point(10, 10));
+        var br2 = new SolidColorBrush(Color.FromRgb(255, 0, 0));
+        var pen2 = new Pen(br2, 10, lineCap: PenLineCap.Round);
+        var ptr = m.Invert().Transform(_curPosition);
+        context.DrawLine(pen2, ptr, ptr + new Avalonia.Point(10, 10));
 
         base.Render(context);
         Console.Write(".");

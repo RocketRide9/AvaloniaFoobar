@@ -140,6 +140,8 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
+                
+                <Button Click="OnResetView">Reset view</Button>
 
             </StackPanel>
         </SplitView.Pane>
@@ -149,9 +151,8 @@
             Background="{DynamicResource ThemeBackgroundColor}"
             LineStyle="{Binding SelectedStyle.Style}"
             Tables="{Binding Tables}"
-        >
-            <!-- <Ellipse Fill="{DynamicResource HighlightBrush}" Width="58" Height="58" Canvas.Left="400" Canvas.Top="10"/> -->
-        </local:DrawingCanvas>
+        />
+        
 
     </SplitView>
 </Window>
