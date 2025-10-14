@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -111,32 +112,14 @@ public class DrawingCanvas : Control
     public double ScaleFactor {
         get => _scaleFactor;
         set {
+            var anchor = _curPosition/_scaleFactor;
+            var scaleChange = value/_scaleFactor;
             _scaleFactor = value;
-            _scaleMatrix = Matrix.Identity;
 
-            // point = point.WithY((Bounds.Height - point.Y)/_scaleFactor);
             Console.WriteLine($"Scale: {_scaleFactor}");
     
-            var m = Matrix.Identity;
-            m = m.Append(Matrix.CreateScale(1d, -1d));
-            m = m.Append(Matrix.CreateTranslation(0, Bounds.Height));
-            m = m.Append(_translationMatrix);
-            var anchor = m.Transform(_curPosition);
-            
-            // anchor = new Avalonia.Point(0, 0);
-    
-            // _scaleMatrix = _scaleMatrix.Append(
-            //     Matrix.CreateScale(_scaleFactor, _scaleFactor)
-            // );
-            // _scaleMatrix = _scaleMatrix.Append(
-            //     Matrix.CreateTranslation((1-_scaleFactor) * anchor)
-            // );
-            _scaleMatrix = _scaleMatrix.Append(
-                Matrix.CreateScale(_scaleFactor, _scaleFactor)
-            );
-            _scaleMatrix = _scaleMatrix.Append(
-                Matrix.CreateTranslation(anchor*(1-_scaleFactor))
-            ); 
+            _scaleMatrix = Matrix.CreateScale(_scaleFactor, _scaleFactor);
+            Translation += anchor*(1/scaleChange-1);
             
             InvalidateVisual();
         }
@@ -205,6 +188,31 @@ public class DrawingCanvas : Control
         return (x0, x1);
     }
 
+    void RenderAxes(DrawingContext context, Matrix transform)
+    {
+        var inv = transform.Invert();
+
+        var l = inv.Transform(new(0             , Bounds.Height/2)).WithY(0);
+        var r = inv.Transform(new(Bounds.Width  , Bounds.Height/2)).WithY(0);
+        var t = inv.Transform(new(Bounds.Width/2, 0)).WithX(0);
+        var b = inv.Transform(new(Bounds.Width/2, Bounds.Height)).WithX(0);
+
+        var x = new LineGeometry(l, r);
+        var y = new LineGeometry(t, b);
+
+        var br = new SolidColorBrush(new Color(255, 0, 0, 0));
+        var pen = new Pen(br, 3/ScaleFactor, lineCap: PenLineCap.Round);
+        
+        var labX = new FormattedText("X", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface.Default, 24/ScaleFactor, br);
+        var labY = new FormattedText("Y", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface.Default, 24/ScaleFactor, br);
+
+        context.DrawText(labX, r);
+        context.DrawText(labY, t-new Avalonia.Point(0, 10));
+
+        context.DrawGeometry(br, pen, x);
+        context.DrawGeometry(br, pen, y);
+    }
+
     public override void Render(DrawingContext context)
     {
         if (Background != null)
@@ -218,11 +226,12 @@ public class DrawingCanvas : Control
         m = m.Append(_translationMatrix);
         m = m.Append(_scaleMatrix);
         context.PushTransform(m);
+        RenderAxes(context, m);
         foreach (var table in Tables)
         {
             var points = table.Points;
             var br = new SolidColorBrush(table.Color);
-            var pen = new Pen(br, 10, lineCap: PenLineCap.Round);
+            var pen = new Pen(br, 10/ScaleFactor, lineCap: PenLineCap.Round);
 
             switch (LineStyle)
             {
@@ -264,11 +273,6 @@ public class DrawingCanvas : Control
                     throw new NotImplementedException();
             }
         }
-
-        var br2 = new SolidColorBrush(Color.FromRgb(255, 0, 0));
-        var pen2 = new Pen(br2, 10, lineCap: PenLineCap.Round);
-        var ptr = m.Invert().Transform(_curPosition);
-        context.DrawLine(pen2, ptr, ptr + new Avalonia.Point(10, 10));
 
         base.Render(context);
         Console.Write(".");
