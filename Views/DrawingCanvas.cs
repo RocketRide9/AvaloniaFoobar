@@ -7,6 +7,7 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Foobar.Models;
@@ -188,26 +189,135 @@ public class DrawingCanvas : Control
         return (x0, x1);
     }
 
+    double findClosestStep(int m, double val)
+    {
+        double[] baseSteps = [2, 5, 10];
+        double b = Math.Pow(10, m);
+        if (val < 2 * b) {
+            return 1 * b;
+        }
+        if (val < 5 * b) {
+            return 2 * b;
+        }
+        if (val < 10 * b) {
+            return 5 * b;
+        }
+        if (val == 10 * b) {
+            return 10 * b;
+        }
+
+        Console.WriteLine("val = {0}, b = {1}", val, b);
+        throw new ArgumentException();
+    }
+    
+    FormattedText FormatText(string s, double em, IBrush? br)
+        => new FormattedText(s, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface.Default, em, br);
+    
+    // возвращает
+    double Gravitate(double a, double b, double val)
+    {
+        if (Math.Abs(val-a) < Math.Abs(b-a)) {
+            return a; 
+        } else {
+            return b;
+        }
+    }
+        
     void RenderAxes(DrawingContext context, Matrix transform)
     {
-        var inv = transform.Invert();
-
-        var l = inv.Transform(new(0             , Bounds.Height/2)).WithY(0);
-        var r = inv.Transform(new(Bounds.Width  , Bounds.Height/2)).WithY(0);
-        var t = inv.Transform(new(Bounds.Width/2, 0)).WithX(0);
-        var b = inv.Transform(new(Bounds.Width/2, Bounds.Height)).WithX(0);
-
-        var x = new LineGeometry(l, r);
-        var y = new LineGeometry(t, b);
-
-        var br = new SolidColorBrush(new Color(255, 0, 0, 0));
-        var pen = new Pen(br, 3/ScaleFactor, lineCap: PenLineCap.Round);
+        var m = transform;
+        var inv = m.Invert();
         
-        var labX = new FormattedText("X", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface.Default, 24/ScaleFactor, br);
-        var labY = new FormattedText("Y", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface.Default, 24/ScaleFactor, br);
+        // реальные координаты
+        var realL = inv.Transform(new(0             , Bounds.Height/2)).WithY(0);
+        var realR = inv.Transform(new(Bounds.Width  , Bounds.Height/2)).WithY(0);
+        var realT = inv.Transform(new(Bounds.Width/2, 0              )).WithX(0);
+        var realB = inv.Transform(new(Bounds.Width/2, Bounds.Height  )).WithX(0);
 
-        context.DrawText(labX, r);
-        context.DrawText(labY, t-new Avalonia.Point(0, 10));
+        Console.WriteLine(realB.ToString());
+
+        // экранные координаты
+        var scrL = m.Transform(realL);
+        var scrR = m.Transform(realR);
+        var scrT = m.Transform(realT);
+        var scrB = m.Transform(realB);
+        
+        var x = new LineGeometry(scrL, scrR);
+        var y = new LineGeometry(scrT, scrB);
+
+        var found = this.TryFindResource("ThemeForegroundColor", this.ActualThemeVariant, out var smth);
+        var br = new SolidColorBrush(new Color(255, 195, 195, 195));
+        var pen = new Pen(br, 3, lineCap: PenLineCap.Round);
+        
+        var labX = FormatText("X", 24, br);
+        var labY = FormatText("Y", 24, br);
+
+        var steps = 10;
+        var rawXStep = (realR - realL).X / steps;
+        var rawYStep = (realT - realB).Y / steps;
+        var kx = (int)Math.Floor(Math.Log10(rawXStep));
+        var ky = (int)Math.Floor(Math.Log10(rawYStep));
+        var stepX = findClosestStep(kx, rawXStep);
+        var stepY = findClosestStep(ky, rawYStep);
+        
+        var chosen = Math.Max(stepX, stepY);
+        var realStep = new Avalonia.Point(chosen, chosen);
+        var scrStep = realStep*ScaleFactor;
+
+        var startReal = new Avalonia.Point(
+            Math.Floor(realL.X / realStep.X) * realStep.X,
+            Math.Floor(realB.Y / realStep.Y) * realStep.Y
+        );
+        var startScr = m.Transform(startReal);
+        for (int i = 0; i <= steps*2; i++)
+        {
+            var real = startReal + i * realStep;
+            var scr = startScr + i * scrStep.WithY(-scrStep.Y);
+
+            var coord = FormatText(real.X.ToString("G6"), 16, br);
+            {
+                // по x
+                Avalonia.Point clamped = new Avalonia.Point(scr.X, Math.Clamp(scrL.Y, 0, scrB.Y));
+                context.DrawLine(pen, new(scr.X, clamped.Y-5), new(scr.X, clamped.Y+5));
+
+                if (real.X.ToString("G6") != "0")
+                {
+                    if (scrL.Y > scrB.Y)
+                    {
+                        context.DrawText(coord, new(scr.X - coord.Width / 2, clamped.Y - 8 - coord.Height));
+                    }
+                    else
+                    {
+                        context.DrawText(coord, new(scr.X - coord.Width / 2, clamped.Y + 8));
+                    }
+                } else {
+                    if (scrL.Y > scrB.Y)
+                    {
+                        context.DrawText(coord, new(scr.X + 8, clamped.Y - 8 - coord.Height));
+                    }
+                    else
+                    {
+                        context.DrawText(coord, new(scr.X + 8, clamped.Y + 8));
+                    }
+                }
+            }
+            
+            coord = FormatText(real.Y.ToString("G6"), 16, br);
+            {
+                // по y
+                Avalonia.Point clamped = new Avalonia.Point(Math.Clamp(scrB.X, 0, scrR.X), scr.Y);
+                context.DrawLine(pen, new(clamped.X-5, scr.Y), new(clamped.X+5, scr.Y));
+                
+                if (real.Y.ToString("G6") != "0") {
+                    if (scrB.X > scrR.X)
+                    {
+                        context.DrawText(coord, new(clamped.X - 16 - coord.Width, scr.Y - 12));
+                    } else {
+                        context.DrawText(coord, new(clamped.X + 16, scr.Y - 12));
+                    }
+                }
+            }
+        }
 
         context.DrawGeometry(br, pen, x);
         context.DrawGeometry(br, pen, y);
@@ -225,8 +335,11 @@ public class DrawingCanvas : Control
         m = m.Append(Matrix.CreateTranslation(0, Bounds.Height));
         m = m.Append(_translationMatrix);
         m = m.Append(_scaleMatrix);
-        context.PushTransform(m);
+        
         RenderAxes(context, m);
+        
+        context.PushTransform(m);
+        
         foreach (var table in Tables)
         {
             var points = table.Points;
